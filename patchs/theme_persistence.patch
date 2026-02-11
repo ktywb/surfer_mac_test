@@ -1,0 +1,175 @@
+diff --git a/libsurfer/src/lib.rs b/libsurfer/src/lib.rs
+index 26a8f83..cb75a32 100644
+--- a/libsurfer/src/lib.rs
++++ b/libsurfer/src/lib.rs
+@@ -181,6 +181,8 @@ pub fn run_egui(cc: &CreationContext, mut state: SystemState) -> Result<Box<dyn
+         .set_visuals_of(egui::Theme::Dark, state.get_visuals());
+     cc.egui_ctx
+         .set_visuals_of(egui::Theme::Light, state.get_visuals());
++    // Immediately apply visuals so the saved theme takes effect on startup
++    cc.egui_ctx.set_visuals(state.get_visuals());
+     cc.egui_ctx.all_styles_mut(|style| {
+         if state.user.config.animation_time == 0.0 {
+             info!("With animation_time set to 0.0, animations cannot be enabled.");
+@@ -2116,10 +2118,16 @@ impl SystemState {
+                 }
+             }
+             Message::SelectTheme(theme_name) => {
+-                let theme = SurferTheme::new(theme_name)
++                let theme = SurferTheme::new(theme_name.clone())
+                     .with_context(|| "Failed to set theme")
+                     .ok()?;
+                 self.user.config.theme = theme;
++                self.user.theme_name = theme_name.clone();
++                // Persist theme preference to config directory
++                #[cfg(not(target_arch = "wasm32"))]
++                if let Some(ref name) = theme_name {
++                    crate::state::UserState::save_theme_preference(name);
++                }
+                 let ctx = self.context.as_ref()?;
+                 ctx.set_visuals(self.get_visuals());
+             }
+diff --git a/libsurfer/src/state.rs b/libsurfer/src/state.rs
+index 659f69d..7903e5b 100644
+--- a/libsurfer/src/state.rs
++++ b/libsurfer/src/state.rs
+@@ -74,6 +74,9 @@ pub struct UserState {
+     pub(crate) autoload_sibling_state_files: Option<AutoLoad>,
+     #[serde(default)]
+     pub(crate) autoreload_files: Option<AutoLoad>,
++    /// Saved theme name to restore when loading state
++    #[serde(default)]
++    pub(crate) theme_name: Option<String>,
+ 
+     pub(crate) waves: Option<WaveData>,
+     pub(crate) drag_started: bool,
+@@ -145,14 +148,86 @@ impl std::fmt::Debug for UserState {
+ 
+ impl UserState {
+     pub fn new(force_default_config: bool) -> Result<UserState> {
+-        let config = SurferConfig::new(force_default_config)
++        Self::new_with_theme(force_default_config, None)
++    }
++
++    pub fn new_with_theme(force_default_config: bool, theme_name: Option<String>) -> Result<UserState> {
++        let mut config = SurferConfig::new(force_default_config)
+             .with_context(|| "Failed to load config file")?;
+ 
++        // Priority: explicit param > saved preference > config file > default
++        let theme_name = theme_name
++            .or_else(|| {
++                #[cfg(not(target_arch = "wasm32"))]
++                { Self::load_theme_preference() }
++                #[cfg(target_arch = "wasm32")]
++                { None }
++            })
++            .or_else(|| {
++                Self::read_theme_from_config(force_default_config)
++            });
++
++        // Apply the resolved theme to config
++        if let Some(ref name) = theme_name {
++            if let Ok(theme) = crate::config::SurferTheme::new(Some(name.clone())) {
++                config.theme = theme;
++            }
++        }
++
+         Ok(UserState {
+             config,
++            theme_name,
+             ..Default::default()
+         })
+     }
++
++    #[cfg(not(target_arch = "wasm32"))]
++    fn read_theme_from_config(_force_default: bool) -> Option<String> {
++        use config::{Config, File};
++        
++        let default_config = include_str!("../../default_config.toml");
++        let mut config_builder = Config::builder()
++            .add_source(config::File::from_str(default_config, config::FileFormat::Toml));
++
++        // Try to read from user config
++        if let Some(proj_dirs) = &*crate::config::PROJECT_DIR {
++            let config_file = proj_dirs.config_dir().join("config.toml");
++            config_builder = config_builder.add_source(File::from(config_file).required(false));
++        }
++
++        // Try to read theme field
++        config_builder.build().ok()
++            .and_then(|cfg| cfg.get_string("theme").ok())
++            .filter(|s| !s.is_empty())
++    }
++
++    #[cfg(target_arch = "wasm32")]
++    fn read_theme_from_config(_force_default: bool) -> Option<String> {
++        None
++    }
++
++    /// Save theme preference to a file in the config directory
++    /// so it persists across app restarts without needing state files
++    #[cfg(not(target_arch = "wasm32"))]
++    pub fn save_theme_preference(theme_name: &str) {
++        if let Some(proj_dirs) = &*crate::config::PROJECT_DIR {
++            let config_dir = proj_dirs.config_dir();
++            let _ = std::fs::create_dir_all(config_dir);
++            let pref_file = config_dir.join("last_theme");
++            let _ = std::fs::write(pref_file, theme_name);
++        }
++    }
++
++    /// Load the last saved theme preference from config directory
++    #[cfg(not(target_arch = "wasm32"))]
++    pub fn load_theme_preference() -> Option<String> {
++        if let Some(proj_dirs) = &*crate::config::PROJECT_DIR {
++            let pref_file = proj_dirs.config_dir().join("last_theme");
++            std::fs::read_to_string(pref_file).ok().filter(|s| !s.is_empty())
++        } else {
++            None
++        }
++    }
+ }
+ 
+ impl Default for UserState {
+@@ -183,6 +258,7 @@ impl Default for UserState {
+             hierarchy_style: None,
+             autoload_sibling_state_files: None,
+             autoreload_files: None,
++            theme_name: None,
+             waves: None,
+             drag_started: false,
+             drag_source_idx: None,
+@@ -493,9 +569,33 @@ impl SystemState {
+     }
+ 
+     pub(crate) fn load_state(&mut self, mut loaded_state: Box<UserState>, path: Option<PathBuf>) {
++        // config is #[serde(skip)], so loaded_state.config is Default.
++        // Save the theme_name from loaded state before swap.
++        let loaded_theme_name = loaded_state.theme_name.clone();
++
+         // first swap everything, fix special cases afterwards
+         mem::swap(&mut self.user, &mut loaded_state);
+ 
++        // Restore the real config (not the default one from deserialization)
++        // After swap: self.user has loaded data with default config,
++        //             loaded_state (old) has our real config
++        mem::swap(&mut self.user.config, &mut loaded_state.config);
++
++        // Restore the theme_name from the loaded state file
++        self.user.theme_name = loaded_theme_name;
++
++        // If loaded state had a saved theme, apply it
++        if let Some(ref theme_name) = self.user.theme_name {
++            if let Ok(new_theme) = crate::config::SurferTheme::new(Some(theme_name.clone())) {
++                self.user.config.theme = new_theme;
++            }
++        }
++
++        // Apply visuals to egui context
++        if let Some(ctx) = self.context.as_ref() {
++            ctx.set_visuals(self.get_visuals());
++        }
++
+         // swap back waves for inner, source, format since we want to keep the file
+         // fix up all wave references from paths if a wave is loaded
+         mem::swap(&mut loaded_state.waves, &mut self.user.waves);

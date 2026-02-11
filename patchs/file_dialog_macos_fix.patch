@@ -1,0 +1,83 @@
+diff --git a/libsurfer/src/file_dialog.rs b/libsurfer/src/file_dialog.rs
+index 70a8f60..4621468 100644
+--- a/libsurfer/src/file_dialog.rs
++++ b/libsurfer/src/file_dialog.rs
+@@ -69,7 +69,7 @@ impl SystemState {
+         let sender = self.channels.msg_sender.clone();
+ 
+         perform_async_work(async move {
+-            if let Some(file) = create_file_dialog(filter, title).save_file().await {
++            if let Some(file) = create_save_file_dialog(filter, title).save_file().await {
+                 checked_send_many(&sender, messages(file).await);
+             }
+         });
+@@ -88,7 +88,7 @@ impl SystemState {
+         let sender = self.channels.msg_sender.clone();
+ 
+         perform_async_work(async move {
+-            if let Some(file) = create_file_dialog(filter, title).save_file().await {
++            if let Some(file) = create_save_file_dialog(filter, title).save_file().await {
+                 checked_send_many(&sender, messages(file).await);
+             }
+         });
+@@ -179,7 +179,60 @@ fn create_file_dialog(filter: (String, Vec<String>), title: &'static str) -> Asy
+ 
+ #[cfg(target_os = "macos")]
+ fn create_file_dialog(filter: (String, Vec<String>), title: &'static str) -> AsyncFileDialog {
++    // On macOS, file dialogs don't handle multi-dot extensions well (e.g., "surf.ron")
++    // Extract only the final extension part after the last dot
++    let extensions: Vec<String> = filter.1
++        .iter()
++        .map(|ext| {
++            ext.rsplit_once('.')
++                .map(|(_, last)| last.to_string())
++                .unwrap_or_else(|| ext.clone())
++        })
++        .collect();
++    
+     AsyncFileDialog::new()
+         .set_title(title)
++        .add_filter(filter.0, &extensions)
++}
++
++#[cfg(not(target_os = "macos"))]
++fn create_save_file_dialog(filter: (String, Vec<String>), title: &'static str) -> AsyncFileDialog {
++    // Set default filename with the first extension
++    let default_filename = if let Some(first_ext) = filter.1.first() {
++        format!("untitled.{}", first_ext)
++    } else {
++        "untitled".to_string()
++    };
++    
++    AsyncFileDialog::new()
++        .set_title(title)
++        .set_file_name(&default_filename)
+         .add_filter(filter.0, &filter.1)
++        .add_filter("All files", &["*"])
++}
++
++#[cfg(target_os = "macos")]
++fn create_save_file_dialog(filter: (String, Vec<String>), title: &'static str) -> AsyncFileDialog {
++    // On macOS, file dialogs don't handle multi-dot extensions well (e.g., "surf.ron")
++    // Extract only the final extension part after the last dot
++    let extensions: Vec<String> = filter.1
++        .iter()
++        .map(|ext| {
++            ext.rsplit_once('.')
++                .map(|(_, last)| last.to_string())
++                .unwrap_or_else(|| ext.clone())
++        })
++        .collect();
++    
++    // Set default filename with the full original extension (e.g., "untitled.surf.ron")
++    let default_filename = if let Some(first_ext) = filter.1.first() {
++        format!("untitled.{}", first_ext)
++    } else {
++        "untitled".to_string()
++    };
++    
++    AsyncFileDialog::new()
++        .set_title(title)
++        .set_file_name(&default_filename)
++        .add_filter(filter.0, &extensions)
+ }

@@ -1,0 +1,3 @@
+[submodule "surfer"]
+	path = surfer
+	url = https://gitlab.com/surfer-project/surfer.git

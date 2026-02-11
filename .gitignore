@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# Build output
+.app
+Surfer.app/
+
+# Rust build cache (inside submodule)
+surfer/target/
+
+# Temporary files
+surfer_tmp/
+*.log

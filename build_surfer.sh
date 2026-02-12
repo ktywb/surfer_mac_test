@@ -37,10 +37,14 @@ cd surfer
 # Update source code
 echo "=== 2. Update Source Code ==="
 echo "Restoring modified files and pulling latest code..."
-git checkout libsurfer/src/file_dialog.rs 2>/dev/null || true
-git checkout libsurfer/src/state.rs 2>/dev/null || true
-git checkout libsurfer/src/lib.rs 2>/dev/null || true
-git checkout surfer/assets/com.gitlab.surferproject.surfer.png 2>/dev/null || true
+git checkout -- libsurfer/src/file_dialog.rs \
+    libsurfer/src/state.rs \
+    libsurfer/src/lib.rs \
+    libsurfer/src/hierarchy.rs \
+    libsurfer/src/message.rs \
+    libsurfer/src/system_state.rs \
+    libsurfer/src/wave_data.rs \
+    surfer/assets/com.gitlab.surferproject.surfer.png 2>/dev/null || true
 git pull
 
 # Apply macOS file dialog patch
@@ -49,26 +53,26 @@ PATCH_FILE="../patchs/file_dialog_macos_fix.patch"
 if [ -f "$PATCH_FILE" ]; then
     if git apply --check "$PATCH_FILE" 2>/dev/null; then
         git apply "$PATCH_FILE"
-        echo "File dialog patch applied successfully"
+        printf '\033[32mFile dialog patch applied successfully\033[0m\n'
     else
-        echo "Patch may already be applied or has conflicts, skipping..."
+        printf '\033[33mPatch may already be applied or has conflicts, skipping...\033[0m\n'
     fi
 else
-    echo "Patch file not found, skipping"
+    printf '\033[31mPatch file not found, skipping\033[0m\n'
 fi
 
-# Apply macOS enhancements patch (theme persistence, settings persistence, CJK font support)
+# Apply macOS enhancements patch (theme persistence, settings persistence, CJK font support, scope expansion state)
 echo "Applying macOS enhancements patch..."
 ENHANCE_PATCH="../patchs/surfer_macos_enhancements.patch"
 if [ -f "$ENHANCE_PATCH" ]; then
     if git apply --check "$ENHANCE_PATCH" 2>/dev/null; then
         git apply "$ENHANCE_PATCH"
-        echo "macOS enhancements patch applied successfully"
+        printf '\033[32mmacOS enhancements patch applied successfully\033[0m\n'
     else
-        echo "Patch may already be applied or has conflicts, skipping..."
+        printf '\033[33mPatch may already be applied or has conflicts, skipping...\033[0m\n'
     fi
 else
-    echo "macOS enhancements patch file not found, skipping"
+    printf '\033[31mmacOS enhancements patch file not found, skipping\033[0m\n'
 fi
 
 # cargo clean

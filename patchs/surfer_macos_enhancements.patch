@@ -1,5 +1,55 @@
+diff --git a/libsurfer/src/hierarchy.rs b/libsurfer/src/hierarchy.rs
+index abcecc3..74bbe6f 100644
+--- a/libsurfer/src/hierarchy.rs
++++ b/libsurfer/src/hierarchy.rs
+@@ -367,6 +367,8 @@ impl SystemState {
+             let variables = wave_container.variables_in_scope(&scope);
+             self.filter_and_draw_variable_list(msgs, wave_container, ui, &variables, None);
+         }
++        // Clear restore flag after all scopes have been rendered
++        self.restore_expanded_scopes.set(false);
+     }
+ 
+     fn add_scope_selectable_label(
+@@ -511,15 +513,21 @@ impl SystemState {
+             });
+         } else {
+             let should_open_header = self.should_open_header_and_scroll_to(scope);
++            let is_in_expanded_set = wave.expanded_scopes.contains(scope);
++            let scope_egui_id = egui::Id::new(scope);
+             let mut collapsing_header =
+                 egui::collapsing_header::CollapsingState::load_with_default_open(
+                     ui.ctx(),
+-                    egui::Id::new(scope),
+-                    false,
++                    scope_egui_id,
++                    is_in_expanded_set,
+                 );
+             if let Some((header_state, _)) = should_open_header {
+                 collapsing_header.set_open(header_state);
+             }
++            // Force-restore expansion state after loading a state file
++            if self.restore_expanded_scopes.get() {
++                collapsing_header.set_open(is_in_expanded_set);
++            }
+             collapsing_header
+                 .show_header(ui, |ui| {
+                     ui.with_layout(
+@@ -560,6 +568,12 @@ impl SystemState {
+                         );
+                     }
+                 });
++            // Track expansion state changes (re-load from egui memory since show_header consumed self)
++            let is_open = egui::collapsing_header::CollapsingState::load(ui.ctx(), scope_egui_id)
++                .map_or(false, |s| s.is_open());
++            if is_open != is_in_expanded_set {
++                msgs.push(Message::SetScopeExpanded(scope.clone(), is_open));
++            }
+         }
+     }
+ 
 diff --git a/libsurfer/src/lib.rs b/libsurfer/src/lib.rs
-index 26a8f83..7bc888e 100644
+index 26a8f83..c6c4ad6 100644
 --- a/libsurfer/src/lib.rs
 +++ b/libsurfer/src/lib.rs
 @@ -153,6 +153,34 @@ pub struct StartupParams {
@@ -107,7 +157,23 @@ index 26a8f83..7bc888e 100644
          if tracing::enabled!(tracing::Level::TRACE)
              && !matches!(message, Message::CommandPromptUpdate { .. })
          {
-@@ -2116,10 +2188,16 @@ impl SystemState {
+@@ -294,6 +366,15 @@ impl SystemState {
+             Message::ExpandScope(scope_ref) => {
+                 *self.scope_ref_to_expand.borrow_mut() = Some(scope_ref);
+             }
++            Message::SetScopeExpanded(scope, expanded) => {
++                if let Some(waves) = &mut self.user.waves {
++                    if expanded {
++                        waves.expanded_scopes.insert(scope);
++                    } else {
++                        waves.expanded_scopes.remove(&scope);
++                    }
++                }
++            }
+             Message::AddVariables(vars) => {
+                 if !vars.is_empty() {
+                     let undo_msg = if vars.len() == 1 {
+@@ -2116,10 +2197,16 @@ impl SystemState {
                  }
              }
              Message::SelectTheme(theme_name) => {
@@ -125,7 +191,7 @@ index 26a8f83..7bc888e 100644
                  let ctx = self.context.as_ref()?;
                  ctx.set_visuals(self.get_visuals());
              }
-@@ -2148,6 +2226,13 @@ impl SystemState {
+@@ -2148,6 +2235,13 @@ impl SystemState {
              }
              Message::AddCharToPrompt(c) => *self.char_to_add_to_prompt.borrow_mut() = Some(c),
          }
@@ -139,8 +205,21 @@ index 26a8f83..7bc888e 100644
          Some(())
      }
  
+diff --git a/libsurfer/src/message.rs b/libsurfer/src/message.rs
+index 9f795b7..b8b1d05 100644
+--- a/libsurfer/src/message.rs
++++ b/libsurfer/src/message.rs
+@@ -73,6 +73,8 @@ pub enum Message {
+     /// Set active scope, None corresponds to the top-level scope.
+     SetActiveScope(Option<ScopeType>),
+     ExpandScope(ScopeExpandType),
++    /// Track scope expansion state change in hierarchy view
++    SetScopeExpanded(ScopeRef, bool),
+     /// Add one or more variables to wave view.
+     AddVariables(Vec<VariableRef>),
+     /// Add scope to wave view. If second argument is true, add subscopes recursively.
 diff --git a/libsurfer/src/state.rs b/libsurfer/src/state.rs
-index 659f69d..bd82ee0 100644
+index 659f69d..170f8cd 100644
 --- a/libsurfer/src/state.rs
 +++ b/libsurfer/src/state.rs
 @@ -74,6 +74,9 @@ pub struct UserState {
@@ -341,7 +420,7 @@ index 659f69d..bd82ee0 100644
 +    #[cfg(not(target_arch = "wasm32"))]
 +    fn read_theme_from_config(_force_default: bool) -> Option<String> {
 +        use config::{Config, File};
-+        
++
 +        let default_config = include_str!("../../default_config.toml");
 +        let mut config_builder = Config::builder()
 +            .add_source(config::File::from_str(default_config, config::FileFormat::Toml));
@@ -423,7 +502,23 @@ index 659f69d..bd82ee0 100644
              waves: None,
              drag_started: false,
              drag_source_idx: None,
-@@ -493,9 +740,70 @@ impl SystemState {
+@@ -347,6 +594,7 @@ impl SystemState {
+                             display_item_ref_counter: 0,
+                             old_num_timestamps: None,
+                             graphics: HashMap::new(),
++                            expanded_scopes: HashSet::new(),
+                             cache_generation: 0,
+                             inflight_caches: HashMap::new(),
+                         },
+@@ -406,6 +654,7 @@ impl SystemState {
+             display_item_ref_counter: 0,
+             old_num_timestamps: None,
+             graphics: HashMap::new(),
++            expanded_scopes: HashSet::new(),
+             cache_generation: 0,
+             inflight_caches: HashMap::new(),
+         };
+@@ -493,9 +742,70 @@ impl SystemState {
      }
  
      pub(crate) fn load_state(&mut self, mut loaded_state: Box<UserState>, path: Option<PathBuf>) {
@@ -494,3 +589,78 @@ index 659f69d..bd82ee0 100644
          // swap back waves for inner, source, format since we want to keep the file
          // fix up all wave references from paths if a wave is loaded
          mem::swap(&mut loaded_state.waves, &mut self.user.waves);
+@@ -511,6 +821,7 @@ impl SystemState {
+             mem::swap(&mut waves.cursor, &mut new_waves.cursor);
+             mem::swap(&mut waves.markers, &mut new_waves.markers);
+             mem::swap(&mut waves.focused_item, &mut new_waves.focused_item);
++            mem::swap(&mut waves.expanded_scopes, &mut new_waves.expanded_scopes);
+             waves.default_variable_name_type = new_waves.default_variable_name_type;
+             waves.scroll_offset = new_waves.scroll_offset;
+             load_commands
+@@ -521,6 +832,9 @@ impl SystemState {
+             self.load_variables(load_commands);
+         }
+ 
++        // Force restore scope expansion state from the loaded state file
++        self.restore_expanded_scopes.set(true);
++
+         // reset drag to avoid confusion
+         self.user.drag_started = false;
+         self.user.drag_source_idx = None;
+diff --git a/libsurfer/src/system_state.rs b/libsurfer/src/system_state.rs
+index 7e34255..5316cf0 100644
+--- a/libsurfer/src/system_state.rs
++++ b/libsurfer/src/system_state.rs
+@@ -1,6 +1,6 @@
+ use eyre::Result;
+ use std::{
+-    cell::RefCell,
++    cell::{Cell, RefCell},
+     collections::{HashMap, VecDeque},
+     sync::{Arc, atomic::AtomicBool},
+ };
+@@ -82,6 +82,8 @@ pub struct SystemState {
+     pub(crate) char_to_add_to_prompt: RefCell<Option<char>>,
+     // This item works with the expand scope feature to determine what hierarchys to open
+     pub scope_ref_to_expand: RefCell<Option<ScopeExpandType>>,
++    /// When true, force-restore CollapsingState from expanded_scopes on next render
++    pub(crate) restore_expanded_scopes: Cell<bool>,
+ 
+     // Benchmarking stuff
+     /// Invalidate draw commands every frame to make performance comparison easier
+@@ -143,6 +145,7 @@ impl SystemState {
+             items_to_expand: RefCell::new(vec![]),
+             char_to_add_to_prompt: RefCell::new(None),
+             scope_ref_to_expand: RefCell::new(None),
++            restore_expanded_scopes: Cell::new(false),
+             surver_selected_file: RefCell::new(None),
+             surver_load_options: RefCell::new(LoadOptions::Clear),
+             expand_parameter_section: false,
+diff --git a/libsurfer/src/wave_data.rs b/libsurfer/src/wave_data.rs
+index e796e23..a2ec6f9 100644
+--- a/libsurfer/src/wave_data.rs
++++ b/libsurfer/src/wave_data.rs
+@@ -1,4 +1,4 @@
+-use std::collections::HashMap;
++use std::collections::{HashMap, HashSet};
+ 
+ use eyre::{Result, WrapErr};
+ use num::bigint::ToBigInt as _;
+@@ -69,6 +69,9 @@ pub struct WaveData {
+     pub scroll_offset: f32,
+     pub display_variable_indices: bool,
+     pub graphics: HashMap<GraphicId, Graphic>,
++    /// Set of expanded scopes in the hierarchy view, used for persistence
++    #[serde(default)]
++    pub expanded_scopes: HashSet<ScopeRef>,
+     /// These are just stored during operation, so no need to serialize
+     #[serde(skip)]
+     pub drawing_infos: Vec<ItemDrawingInfo>,
+@@ -200,6 +203,7 @@ impl WaveData {
+             drawing_infos: vec![],
+             top_item_draw_offset: 0.,
+             graphics: HashMap::new(),
++            expanded_scopes: self.expanded_scopes,
+             total_height: 0.,
+             old_num_timestamps,
+             cache_generation: self.cache_generation + 1, // Invalidate all existing caches

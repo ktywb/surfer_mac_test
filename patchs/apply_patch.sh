@@ -28,11 +28,11 @@ cd "$SURFER_DIR"
 
 echo "Checking patch status..."
 if git apply --check "$PATCH_FILE" 2>/dev/null; then
-    echo "Patch can be applied cleanly"
+    echo -e "\e[32mPatch can be applied cleanly\e[0m"
     echo ""
     echo "Applying patch..."
     git apply "$PATCH_FILE"
-    echo "Patch applied successfully!"
+    echo -e "\e[32mPatch applied successfully!\e[0m"
     echo ""
     echo "Modified files:"
     git diff --stat
@@ -41,7 +41,7 @@ if git apply --check "$PATCH_FILE" 2>/dev/null; then
     echo "   cd $SCRIPT_DIR/.."
     echo "   ./build_surfer.sh"
 else
-    echo "Patch cannot be applied directly, conflicts may exist"
+    echo -e "\e[31mPatch cannot be applied directly, conflicts may exist\e[0m"
     echo ""
     echo "Possible reasons:"
     echo "1. Patch has already been applied"

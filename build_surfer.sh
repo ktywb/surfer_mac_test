@@ -141,14 +141,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func launchSurfer(with arguments: [String]) {
         let binPath = Bundle.main.bundlePath + "/Contents/MacOS/surfer-bin"
+        
+        // Use execv to replace this process with surfer-bin.
+        // This keeps the same PID and Dock icon — exactly one icon.
+        let allArgs = [binPath] + arguments
+        let cArgs = allArgs.map { strdup($0) } + [nil]
+        execv(binPath, cArgs)
+        
+        // execv only returns on failure — fallback to Process
         let task = Process()
         task.executableURL = URL(fileURLWithPath: binPath)
         task.arguments = arguments
-        
-        // Launch in background, don't wait
         try? task.run()
-        
-        // Wait briefly to ensure process starts, then exit wrapper
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             NSApp.terminate(nil)
         }
@@ -192,8 +196,6 @@ cat > "$APP_DIR/Contents/Info.plist" <<EOF
     <key>LSMinimumSystemVersion</key>
     <string>11.0</string>
     <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>LSUIElement</key>
     <true/>
     <key>CFBundleDocumentTypes</key>
     <array>

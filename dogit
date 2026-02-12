@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# Use first argument as commit message, default to "-" if not provided
+COMMIT_MSG="${1:-"-"}"
+
+git add -A && echo && git commit -m "$COMMIT_MSG" && echo && git push

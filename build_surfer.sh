@@ -71,6 +71,20 @@ else
     echo "Theme persistence patch file not found, skipping"
 fi
 
+# Apply CJK font support patch (Chinese/Japanese/Korean characters in file paths)
+echo "Applying CJK font support patch..."
+CJK_PATCH="../patchs/cjk_font_support.patch"
+if [ -f "$CJK_PATCH" ]; then
+    if git apply --check "$CJK_PATCH" 2>/dev/null; then
+        git apply "$CJK_PATCH"
+        echo "CJK font support patch applied successfully"
+    else
+        echo "CJK patch may already be applied or has conflicts, skipping..."
+    fi
+else
+    echo "CJK font support patch file not found, skipping"
+fi
+
 # cargo clean
 # # Update submodules
 # echo "Updating Git submodules..."

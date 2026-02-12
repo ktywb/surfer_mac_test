@@ -1,0 +1,39 @@
+diff --git a/libsurfer/src/lib.rs b/libsurfer/src/lib.rs
+index 26a8f83..c51e356 100644
+--- a/libsurfer/src/lib.rs
++++ b/libsurfer/src/lib.rs
+@@ -153,6 +153,34 @@ pub struct StartupParams {
+ fn setup_custom_font(ctx: &egui::Context) {
+     let mut fonts = FontDefinitions::default();
+ 
++    // Load system CJK font for Chinese/Japanese/Korean character support
++    #[cfg(target_os = "macos")]
++    {
++        let cjk_font_paths = [
++            "/System/Library/Fonts/PingFang.ttc",
++            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
++        ];
++        for path in &cjk_font_paths {
++            if let Ok(bytes) = std::fs::read(path) {
++                let font_data = FontData::from_owned(bytes);
++                fonts
++                    .font_data
++                    .insert("cjk_fallback".to_owned(), font_data.into());
++                fonts
++                    .families
++                    .get_mut(&FontFamily::Proportional)
++                    .unwrap()
++                    .push("cjk_fallback".to_owned());
++                fonts
++                    .families
++                    .get_mut(&FontFamily::Monospace)
++                    .unwrap()
++                    .push("cjk_fallback".to_owned());
++                break;
++            }
++        }
++    }
++
+     fonts.font_data.insert(
+         "remix_icons".to_owned(),
+         FontData::from_static(egui_remixicon::FONT).into(),

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# cd to project root
+# cd "$(dirname "$0")/.."
+
 # Use first argument as commit message, default to "-" if not provided
 COMMIT_MSG="${1:-"-"}"
 

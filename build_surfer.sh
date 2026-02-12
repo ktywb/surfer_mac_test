@@ -57,32 +57,18 @@ else
     echo "Patch file not found, skipping"
 fi
 
-# Apply theme persistence patch
-echo "Applying theme persistence patch..."
-THEME_PATCH="../patchs/theme_persistence.patch"
-if [ -f "$THEME_PATCH" ]; then
-    if git apply --check "$THEME_PATCH" 2>/dev/null; then
-        git apply "$THEME_PATCH"
-        echo "Theme persistence patch applied successfully"
+# Apply macOS enhancements patch (theme persistence, settings persistence, CJK font support)
+echo "Applying macOS enhancements patch..."
+ENHANCE_PATCH="../patchs/surfer_macos_enhancements.patch"
+if [ -f "$ENHANCE_PATCH" ]; then
+    if git apply --check "$ENHANCE_PATCH" 2>/dev/null; then
+        git apply "$ENHANCE_PATCH"
+        echo "macOS enhancements patch applied successfully"
     else
         echo "Patch may already be applied or has conflicts, skipping..."
     fi
 else
-    echo "Theme persistence patch file not found, skipping"
-fi
-
-# Apply CJK font support patch (Chinese/Japanese/Korean characters in file paths)
-echo "Applying CJK font support patch..."
-CJK_PATCH="../patchs/cjk_font_support.patch"
-if [ -f "$CJK_PATCH" ]; then
-    if git apply --check "$CJK_PATCH" 2>/dev/null; then
-        git apply "$CJK_PATCH"
-        echo "CJK font support patch applied successfully"
-    else
-        echo "CJK patch may already be applied or has conflicts, skipping..."
-    fi
-else
-    echo "CJK font support patch file not found, skipping"
+    echo "macOS enhancements patch file not found, skipping"
 fi
 
 # cargo clean

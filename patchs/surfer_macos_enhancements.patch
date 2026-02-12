@@ -1,3 +1,22 @@
+# diff --git a/default_config.toml b/default_config.toml
+# index 9e803d9..6b10e20 100644
+# --- a/default_config.toml
+# +++ b/default_config.toml
+# @@ -86,7 +86,7 @@ goto_start = ["S"]
+#  goto_top = ["Home"]
+#  goto_bottom = ["End"]
+#  save_state_file = ["Command+S"]
+# -group_new = ["G"]
+# +group_new = ["G", "Command+G"]
+#  item_focus = ["F"]
+#  select_all = ["Command+A"]
+#  select_toggle = ["A"]
+# @@ -102,4 +102,4 @@ marker_add = ["M"]
+#  toggle_menu = ["Alt+M"]
+#  show_command_prompt = ["Space"]
+#  rename_item = ["F2"]
+# -divider_add = ["D"]
+# +divider_add = ["D", "Command+D"]
 diff --git a/libsurfer/src/hierarchy.rs b/libsurfer/src/hierarchy.rs
 index abcecc3..74bbe6f 100644
 --- a/libsurfer/src/hierarchy.rs

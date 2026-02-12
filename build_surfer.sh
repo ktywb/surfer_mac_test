@@ -44,6 +44,7 @@ git checkout -- libsurfer/src/file_dialog.rs \
     libsurfer/src/message.rs \
     libsurfer/src/system_state.rs \
     libsurfer/src/wave_data.rs \
+    default_config.toml \
     surfer/assets/com.gitlab.surferproject.surfer.png 2>/dev/null || true
 git pull
 
